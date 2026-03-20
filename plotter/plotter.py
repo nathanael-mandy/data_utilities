@@ -182,36 +182,81 @@ INVALID_CONFIG_FILE = 4
 class Plot():
     
     def __init__(self, plot: dict):
+        self.plot = plot
         self._df = None
-        self._data_path = plot['data_path']
-        
-        self.plot_name = plot['plot_name']
-
         self.indexs = None
-        if plot.get('indexs', None) != None:
-            if self._validate_indexs(plot.get('indexs', None)) == INVALID_CONFIG_FILE:
-                exit(INVALID_CONFIG_FILE)
-            self.indexs = plot.get('indexs', None)[0], plot.get('indexs', None)[1]
+        self._data_path = None
+        self.plot_name = None
+        self.x_datetime = None
+        self.x_col_name = None
+        self.y_col_names = None
 
-        self.x_datetime = plot['x_datetime']
-        self.x_col_name = plot['x_col']
-        self.y_col_names = plot['y_cols']
-        self.units = plot.get('units', None)
         self.figure = None
 
-        if (self._load_csv() != SUCCESSFUL) or (self._validate_columns() != SUCCESSFUL):
+        code, msg = self._validate_and_load_config()
+        if code != SUCCESSFUL:
+            print(colored(msg + '\r\n\n', 'red'))
             return
         
+        print(colored(msg + '\r\n\n', 'green'))
         self.generate_plot()
-        self._ranges = (0, 0, 0, 0)
+
         threading.Thread(target=self.update_thread, daemon=True).start()
         
+
+    def _validate_and_load_config(self):
+        # Check for required fields
+        required_fields = ['plot_name', 'data_path', 'x_col', 'y_cols', 'x_datetime']
+        for field in required_fields:
+            if field not in self.plot:
+                return INVALID_CONFIG_FILE, f"ERROR: Missing required field <{field}> in plot config."
         
+        # Validate x_col format
+        if not isinstance(self.plot['x_col'], list) or len(self.plot['x_col']) != 1 or not isinstance(self.plot['x_col'][0], list) or len(self.plot['x_col'][0]) != 2:
+            return INVALID_CONFIG_FILE, "ERROR: Invalid x_col format. Correct config x column format is: \r\n>> x_col: List<List<str, str>>\r\nE.G.:\r\n>> x_col: [['time', 'TIME']]"
+        
+        # Validate y_cols format
+        if not isinstance(self.plot['y_cols'], list) or len(self.plot['y_cols']) == 0:
+            return INVALID_CONFIG_FILE, "ERROR: y_cols must be a non-empty list. Correct config y column format is: \r\n>> y_cols: List<List<str, str>>\r\nE.G.:\r\n>> y_cols: [['y_col1', 'units'], ['y_col2', 'units']]"
+        
+        for c in self.plot['y_cols']:
+            if not isinstance(c, list) or len(c) != 2:
+                return INVALID_CONFIG_FILE, f"ERROR: Invalid y column format. Correct config y column format is: \r\n>> y_cols: List<List<str, str>>\r\nE.G.:\r\n>> y_cols: [['y_col1', 'units'], ['y_col2', 'units']]"
+        # Validate x_datetime is boolean
+        if not isinstance(self.plot['x_datetime'], bool):
+            return INVALID_CONFIG_FILE, "ERROR: x_datetime must be a boolean value (true or false)."
+
+        # Check CSV file exists
+        if not os.path.exists(self.plot['data_path']):
+            return FILE_NOT_FOUND, f"ERROR: The given path <{self.plot['data_path']}> for plot {self.plot_name} does not exist"
+        
+
+        ######### CHECKING OPTIONAL ARGUMENTS #########
+        
+        # Validate indexs format
+        if self.plot.get('indexs', None) != None:
+            if not isinstance(self.plot['indexs'], list) or len(self.plot['indexs']) != 2:
+                return INVALID_CONFIG_FILE, "ERROR: Invalid indexs format. Correct config index format is: \r\n>> indexs: List<int, int>\r\nE.G.:\r\n>> indexs: [225, 290]"
+            if self._validate_and_set_indexs(self.plot['indexs']) == INVALID_CONFIG_FILE:
+                return INVALID_CONFIG_FILE, "ERROR: Invalid indexs format. Correct config index format is: \r\n>> indexs: List<int, int>\r\nE.G.:\r\n>> indexs: [225, 290]"
+        
+        
+        # NOTE: Only actually load the dataframe after indexs have been validated to avoid unnecessary loading of large CSV files
+        # Now load and set all parameters from config file
+        
+        self._data_path = self.plot['data_path']
+        self.plot_name = self.plot['plot_name']
+        self.x_datetime = self.plot['x_datetime']
+        self.x_col_name = self.plot['x_col'][0]
+        self.y_col_names = self.plot['y_cols']
+        self._load_csv()
+        
+        return SUCCESSFUL, f"Successfully validated and loaded config for plot {self.plot_name}" 
     
+
+    
+
     def _load_csv(self) -> int:
-        if not os.path.exists(self._data_path):
-            print(f"ERROR: The given path <{self._data_path}> for plot {self.plot_name} does not exist")
-            return FILE_NOT_FOUND
         self._data_path = Path(self._data_path)
         self._df = pd.read_csv(self._data_path)
 
@@ -219,30 +264,15 @@ class Plot():
             self._df = self._df.iloc[self.indexs[0]: self.indexs[1], :]
         
         return SUCCESSFUL
-
-
-    def _validate_columns(self) -> int:
-        
-        for col_name, _ in self.y_col_names:
-            if col_name not in self._df:
-                print(f"ERROR: Column <{col_name}> does not exist in csv {self._data_path}.")
-                return COL_NOT_FOUND
-            
-        return SUCCESSFUL
     
 
-    def _validate_indexs(self, indexs):
-         for i in indexs:
-            try:
-                int(i)
-            except ValueError:
-                print(f"VALUE ERROR: Invalid Index. Correct config index format is: \r\n>> indexs: List<int, int>\r\nE.G.:\r\n>> indexs: [225, 290]")
-                return INVALID_CONFIG_FILE
+    def _validate_and_set_indexs(self, indexs):
+        try:
+            self.indexs = [int(indexs[0]), int(indexs[1])]
 
-
-    # def _validate_config(self):
-
-
+        except ValueError:
+            print(f"VALUE ERROR: Invalid Index. Correct config index format is: \r\n>> indexs: List<int, int>\r\nE.G.:\r\n>> indexs: [225, 290]")
+            return INVALID_CONFIG_FILE
 
     def rescale_y_axis(self):
         y_values = []
@@ -254,7 +284,7 @@ class Plot():
 
     def rescale_x_axis(self):
         x_values = []
-        for x_col in [self.x_col_name]:
+        for x_col, _ in [self.x_col_name]:
             x_values.extend(self.data_source.data[x_col])
         if x_values:
             self.figure.x_range.start = min(x_values)
@@ -275,8 +305,8 @@ class Plot():
                     "$x": 'datetime', # use 'datetime' formatter 
                 }
             
-            self._df[self.x_col_name] = pd.to_datetime(self._df[self.x_col_name])
-            self.figure = figure(x_axis_type='datetime',width=DEFAULT_PLOT_WIDTH, height=DEFAULT_PLOT_HEIGHT, title="\r\n\n" + self.plot_name)
+            self._df[self.x_col_name[0]] = pd.to_datetime(self._df[self.x_col_name[0]])
+            self.figure = figure(x_axis_type='datetime',width=DEFAULT_PLOT_WIDTH, height=DEFAULT_PLOT_HEIGHT, title="\r\n\n" + self.plot_name, x_axis_label=self.x_col_name[1])
             self.figure.title.align = "center"
             self.figure.title.text_font_size = "25px"
 
@@ -297,7 +327,7 @@ class Plot():
             self.figure.add_tools(custom_hover)
             
         # For multiple y columns
-        columns = {self.x_col_name : self._df[self.x_col_name]}
+        columns = {self.x_col_name[0] : self._df[self.x_col_name[0]]}
         for y_col, _ in self.y_col_names:
             columns.update({y_col : self._df[y_col]})
 
@@ -313,9 +343,9 @@ class Plot():
                 self.figure.extra_y_ranges.update({y: Range1d(start=s, end=e)})
 
                 self.figure.add_layout(LinearAxis(y_range_name=y, axis_label=units), 'right')
-                self.figure.scatter(self.x_col_name, y, y_range_name=y,source=self.data_source, size=4, color=rand_color, legend_label=y)
+                self.figure.scatter(self.x_col_name[0], y, y_range_name=y,source=self.data_source, size=4, color=rand_color, legend_label=y)
             else:
-                self.figure.scatter(self.x_col_name, y, source=self.data_source, size=4, color=rand_color, legend_label=y)
+                self.figure.scatter(self.x_col_name[0], y, source=self.data_source, size=4, color=rand_color, legend_label=y)
                 self.figure.yaxis.axis_label = units
 
         self.figure.legend.click_policy = "hide"
@@ -349,7 +379,7 @@ class Plot():
                     row = next(csv.DictReader([line], fieldnames=reader.fieldnames))
                     # print(f"{self.plot_name}: Read new line: {row}")
                     index += 1
-                    new_data = {self.x_col_name: [index]}
+                    new_data = {self.x_col_name[0]: [index]}
                     for y, _ in self.y_col_names:
                         new_data[y] = [float(row[y])]
                 except Exception:
@@ -396,20 +426,23 @@ config = Path(DEFAULT_CONF)
 
 with open(config) as f:
     data = yaml.load(f, Loader=yaml.FullLoader)
-    print(data)
-    # exit(0)
+
+    print(colored(f"PRINTING CONFIG FILE: {DEFAULT_CONF} -------------------------->", 'green'))
+    print(colored(data, 'blue'))
 
 plots_conf = data['plotter']['plots']
 
 plots = [ Plot(p) for p in plots_conf ]
+
+if any(p.figure == None for p in plots):
+    print(colored("\r\nERROR: Failed to load data for one or more plots. Please check the error messages above and fix the issues before running the plotter.\r\n", 'red'))
+    exit(INVALID_CONFIG_FILE)
 
 
 figures = []
 for p in plots:
     # curdoc().add_periodic_callback(p.get_callback(), 5000)
     figures.append(p.get_plot())
-    # print(p)
-    # print("")
 
 curdoc().add_root(column(*figures))
 output_file(data['plotter']['title'] + '.html')
