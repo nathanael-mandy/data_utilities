@@ -1,6 +1,9 @@
 # Ignore Data Directory
 Data/
 
+# Ignore *.csv files 
+*.csv
+
 # Ignore Config Files
 *.yaml
 
