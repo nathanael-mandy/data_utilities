@@ -223,7 +223,7 @@ class Plot():
 
     def _validate_columns(self) -> int:
         
-        for col_name in self.y_col_names:
+        for col_name, _ in self.y_col_names:
             if col_name not in self._df:
                 print(f"ERROR: Column <{col_name}> does not exist in csv {self._data_path}.")
                 return COL_NOT_FOUND
@@ -240,49 +240,13 @@ class Plot():
                 return INVALID_CONFIG_FILE
 
 
-    """def generate_plot(self): 
-        if self.x_datetime:
-            custom_hover = HoverTool(
-                tooltips = [
-                    ('Time', "$x{%Y-%m-%d %H:%M:%S}"),
-                    ('Y Val', '$y'),
-                    ("index", "$index") 
-                ],                
-                mode = 'vline'
-                )
-            custom_hover.formatters = {
-                    "$x": 'datetime', # use 'datetime' formatter 
-                }
-            
-            self._df[self.x_col_name] = pd.to_datetime(self._df[self.x_col_name])
-            self.figure = figure(x_axis_type='datetime',width=DEFAULT_PLOT_WIDTH, height=DEFAULT_PLOT_HEIGHT, title="\r\n\n" + self.plot_name)
-            self.figure.title.align = "center"
-            self.figure.title.text_font_size = "25px"
+    # def _validate_config(self):
 
-            self.figure.add_tools(custom_hover)
-            
-            
-        else:
-            self.figure = figure(width=DEFAULT_PLOT_WIDTH, height=DEFAULT_PLOT_HEIGHT, title=self.plot_name, tooltips=DEFAULT_TOOLTIPS)
-        
-        # For multiple y columns
-        columns = {self.x_col_name : self._df[self.x_col_name]}
-        for y_col in self.y_col_names:
-            # rand_color = BOKEH_COLORS[random.randint(0, COLOURS_LENGTH - 1)]
-            # self.figure.scatter(x=self._df[self.x_col_name], y=self._df[y_col], size=4, legend_label = y_col, color=rand_color)
 
-            columns.update({y_col : self._df[y_col]})
-        self.data_source = ColumnDataSource(data = columns)
-
-        for y_col in self.y_col_names:
-            rand_color = BOKEH_COLORS[random.randint(0, COLOURS_LENGTH - 1)]
-            self.figure.scatter(x=self.x_col_name, y=y_col, size=4, line_color=rand_color, source=self.data_source, legend_label=y_col)
-   
-        self.figure.xgrid.grid_line_color = 'navy'"""
 
     def rescale_y_axis(self):
         y_values = []
-        for y_col in self.y_col_names:
+        for y_col, _ in self.y_col_names:
             y_values.extend(self.data_source.data[y_col])
         if y_values:
             self.figure.y_range.start = min(y_values) - (max(y_values) - min(y_values))*0.4
@@ -334,7 +298,7 @@ class Plot():
             
         # For multiple y columns
         columns = {self.x_col_name : self._df[self.x_col_name]}
-        for y_col in self.y_col_names:
+        for y_col, _ in self.y_col_names:
             columns.update({y_col : self._df[y_col]})
 
         self.data_source = ColumnDataSource(data = columns)
@@ -342,32 +306,20 @@ class Plot():
         
         for i, y in enumerate(self.y_col_names):
             rand_color = BOKEH_COLORS[random.randint(0, COLOURS_LENGTH - 1)]
-            
-            # self.figure.scatter(self.x_col_name, y, source=self.data_source, size=4, color=rand_color, legend_label=y)
+            y, units = y
             if i > 0: # Additional axis on right of the plot for multiple y columns
                 s = min(self._df[y]) - (max(self._df[y]) - min(self._df[y]))*0.4
                 e = max(self._df[y]) + (max(self._df[y]) - min(self._df[y]))*0.4
                 self.figure.extra_y_ranges.update({y: Range1d(start=s, end=e)})
-                # time.sleep(0.1) 
-
-                units = y # Default to column name as units if not specified in config
-                if self.units != None:
-                    #TODO: validate length of units list in config file matches number of y columns
-                    units = self.units[i] if i < len(self.units) else y # Just in case length mismatch between y columns and units list in config
 
                 self.figure.add_layout(LinearAxis(y_range_name=y, axis_label=units), 'right')
                 self.figure.scatter(self.x_col_name, y, y_range_name=y,source=self.data_source, size=4, color=rand_color, legend_label=y)
             else:
                 self.figure.scatter(self.x_col_name, y, source=self.data_source, size=4, color=rand_color, legend_label=y)
-                units = y # Default to column name as units if not specified in config
-                if self.units != None and len(self.units) > 0:
-                    units = self.units[0]
                 self.figure.yaxis.axis_label = units
 
-            
-            
         self.figure.legend.click_policy = "hide"
-        self.figure.xgrid.grid_line_color = 'navy'
+        self.figure.xgrid.grid_line_color = 'darkgrey'
 
 
 
@@ -398,7 +350,7 @@ class Plot():
                     # print(f"{self.plot_name}: Read new line: {row}")
                     index += 1
                     new_data = {self.x_col_name: [index]}
-                    for y in self.y_col_names:
+                    for y, _ in self.y_col_names:
                         new_data[y] = [float(row[y])]
                 except Exception:
                     continue
@@ -445,6 +397,7 @@ config = Path(DEFAULT_CONF)
 with open(config) as f:
     data = yaml.load(f, Loader=yaml.FullLoader)
     print(data)
+    # exit(0)
 
 plots_conf = data['plotter']['plots']
 
